@@ -63,7 +63,13 @@ func BroadcastHandler(n *maelstrom.Node) func(maelstrom.Message) error {
 					mu.Unlock()
 					
 					neighbors := getNeighbors(n.ID())
-					sendGossipToNodes(n, neighbors, message)
+					filteredNeighbors := make([]string, 0, len(neighbors))
+					for _, neighbor := range neighbors {
+						if neighbor != msg.Src {
+							filteredNeighbors = append(filteredNeighbors, neighbor)
+						}
+					}
+					sendGossipToNodes(n, filteredNeighbors, message)
 				}
 			}
 		case "topology":

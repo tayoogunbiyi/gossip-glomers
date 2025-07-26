@@ -48,9 +48,9 @@ This approach guarantees uniqueness through timestamp + node ID + counter combin
 **ULID**: 128-bit identifier with 48-bit timestamp + 80-bit randomness
 
 
-## Challenge #3: Broadcast
+## Challenge #3a: Single-Node Broadcast
 
-[Challenge #3](https://fly.io/dist-sys/3a/) introduces a multi-part challenge to build a fault-tolerant, multi-node broadcast system. This first part establishes the foundation by implementing a broadcast service that runs on a single node.
+[Challenge #3a](https://fly.io/dist-sys/3a/) introduces a multi-part challenge to build a fault-tolerant, multi-node broadcast system. This first part establishes the foundation by implementing a broadcast service that runs on a single node.
 
 ### The Problem
 
@@ -86,6 +86,48 @@ func SingleNodeBroadcastHandler(n *maelstrom.Node) func(maelstrom.Message) error
 }
 ```
 
+## Challenge #3b: Multi-Node Broadcast
+
+[Challenge #3b](https://fly.io/dist-sys/3b/) extends the single-node broadcast to a multi-node cluster where messages must propagate efficiently across all nodes without network partitions.
+
+### The Problem
+
+Build on the single-node implementation to propagate broadcast values across a 5-node cluster. Messages should reach all nodes within a few seconds while avoiding inefficient approaches like sending entire datasets on every message.
+
+### My Solution: Topology-Aware Gossip Protocol
+
+Implemented an efficient gossip-based broadcast that uses the network topology to minimize redundant transmissions and prevent infinite message loops.
+
+```go
+func sendGossipToNodes(n *maelstrom.Node, targetNodes []string, messageValue interface{}) {
+	for _, node := range targetNodes {
+		go func(targetNode string) {
+			n.RPC(targetNode, map[string]any{
+				"type":    "broadcast", 
+				"message": messageValue,
+			}, func(msg maelstrom.Message) error {
+				return nil
+			})
+		}(node)
+	}
+}
+
+func BroadcastHandler(n *maelstrom.Node) func(maelstrom.Message) error {
+	// ... check if message already seen ...
+	if !alreadySeen {
+		neighbors := getNeighbors(n.ID())
+		filteredNeighbors := make([]string, 0, len(neighbors))
+		for _, neighbor := range neighbors {
+			if neighbor != msg.Src { // Prevent loops
+				filteredNeighbors = append(filteredNeighbors, neighbor)
+			}
+		}
+		sendGossipToNodes(n, filteredNeighbors, message)
+	}
+}
+```
+
+
 
 ## Running the Tests
 
@@ -101,4 +143,7 @@ go build -o gossip-gloomers
 
 # Run Challenge #3a tests
 ./maelstrom test -w broadcast --bin ./gossip-gloomers --node-count 1 --time-limit 20 --rate 10
+
+# Run Challenge #3b tests
+./maelstrom test -w broadcast --bin ./gossip-gloomers --node-count 5 --time-limit 20 --rate 10
 ```
