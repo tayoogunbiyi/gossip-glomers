@@ -2,4 +2,5 @@
 maelstrom/
 maelstrom-echo
 store/
-
+output
+.DS_Store

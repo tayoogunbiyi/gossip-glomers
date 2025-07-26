@@ -1,4 +1,4 @@
-# Maelstrom Echo - Gossip Glomers Solutions
+# Gossip Gloomers - Distributed Systems Solutions
 
 This repository contains my solutions to the [Gossip Glomers](https://fly.io/dist-sys/) distributed systems challenges by Fly.io, built on top of [Maelstrom](https://github.com/jepsen-io/maelstrom) - Kyle Kingsbury's distributed systems testing platform.
 
@@ -53,11 +53,11 @@ This approach guarantees uniqueness through timestamp + node ID + counter combin
 
 ```bash
 # Build the binary
-go build -o maelstrom-echo
+go build -o gossip-gloomers
 
 # Run Challenge #1 tests
-./maelstrom/maelstrom test -w echo --bin ./maelstrom-echo --node-count 1 --time-limit 10
+./maelstrom/maelstrom test -w echo --bin ./gossip-gloomers --node-count 1 --time-limit 10
 
 # Run Challenge #2 tests
-./maelstrom/maelstrom test -w unique-ids --bin ./maelstrom-echo --time-limit 30 --rate 1000 --node-count 3 --availability total --nemesis partition
+./maelstrom/maelstrom test -w unique-ids --bin ./gossip-gloomers --time-limit 30 --rate 1000 --node-count 3 --availability total --nemesis partition
 ```

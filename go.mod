@@ -1,4 +1,4 @@
-module maelstrom-echo
+module gossip-gloomers
 
 go 1.24.5
 

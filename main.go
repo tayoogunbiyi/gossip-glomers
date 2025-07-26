@@ -4,7 +4,7 @@ import (
 	"log"
 	"os"
 
-	"maelstrom-echo/handlers"
+	"gossip-gloomers/handlers"
 
 	maelstrom "github.com/jepsen-io/maelstrom/demo/go"
 )
