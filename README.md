@@ -48,6 +48,44 @@ This approach guarantees uniqueness through timestamp + node ID + counter combin
 **ULID**: 128-bit identifier with 48-bit timestamp + 80-bit randomness
 
 
+## Challenge #3: Broadcast
+
+[Challenge #3](https://fly.io/dist-sys/3a/) introduces a multi-part challenge to build a fault-tolerant, multi-node broadcast system. This first part establishes the foundation by implementing a broadcast service that runs on a single node.
+
+### The Problem
+
+The task is to create a durable, in-memory store on a single node that handles `broadcast`, `read`, and `topology` RPCs. The node must store integers from `broadcast` messages and return them on `read` requests.
+
+### My Solution: Thread-Safe, In-Memory Broadcast
+
+Use a `map[int]struct{}` to store a unique set of messages. To handle concurrent requests safely and efficiently, access to the map is controlled by a `sync.RWMutex`, which allows for concurrent reads.
+
+```go
+func SingleNodeBroadcastHandler(n *maelstrom.Node) func(maelstrom.Message) error {
+	return func(msg maelstrom.Message) error {
+		// ... unmarshal body ...
+		switch msg.Type() {
+		case "broadcast":
+			// ...
+			mu.Lock() // Exclusive lock for writing
+			messages[int(messageInt)] = struct{}{}
+			mu.Unlock()
+			// ...
+		case "read":
+			// ...
+			mu.RLock() // Read lock allows concurrent reads
+			msgs := make([]int, 0, len(messages))
+			for m := range messages {
+				msgs = append(msgs, m)
+			}
+			mu.RUnlock()
+			response["messages"] = msgs
+		}
+		// ...
+	}
+}
+```
+
 
 ## Running the Tests
 
@@ -60,4 +98,7 @@ go build -o gossip-gloomers
 
 # Run Challenge #2 tests
 ./maelstrom/maelstrom test -w unique-ids --bin ./gossip-gloomers --time-limit 30 --rate 1000 --node-count 3 --availability total --nemesis partition
+
+# Run Challenge #3a tests
+./maelstrom test -w broadcast --bin ./gossip-gloomers --node-count 1 --time-limit 20 --rate 10
 ```
