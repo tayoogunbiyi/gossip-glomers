@@ -13,5 +13,5 @@ func register(n *maelstrom.Node, handler func(maelstrom.Message) error, commands
 func RegisterAll(n *maelstrom.Node) {
 	register(n, EchoHandler(n), "echo")
 	register(n, GenerateHandler(n), "generate")
-	register(n, SingleNodeBroadcastHandler(n), "broadcast", "topology", "read")
+	register(n, BroadcastHandler(n), "broadcast", "topology", "read", "gossip")
 } 
