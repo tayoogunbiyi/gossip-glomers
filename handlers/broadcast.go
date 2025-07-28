@@ -1,29 +1,123 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
+	"fmt"
 	"sort"
 	"sync"
+	"time"
 
 	maelstrom "github.com/jepsen-io/maelstrom/demo/go"
+)
+
+const (
+	RPC_TIMEOUT = 5 * time.Second
+	MAX_RETRIES = 10
 )
 
 var (
 	messages = make(map[int]struct{})
 	mu       sync.RWMutex
 	topology map[string][]string
+	tracker  = &retryTracker{retries: make(map[string]context.CancelFunc)}
 )
 
+type retryTracker struct {
+	mu      sync.Mutex
+	retries map[string]context.CancelFunc
+}
+
+func (rt *retryTracker) storeCancelFunc(key string, cancel context.CancelFunc) {
+	rt.mu.Lock()
+	defer rt.mu.Unlock()
+	rt.retries[key] = cancel
+}
+
+func (rt *retryTracker) cancelAndRemove(key string) {
+	rt.mu.Lock()
+	defer rt.mu.Unlock()
+	if cancel, exists := rt.retries[key]; exists {
+		cancel()
+		delete(rt.retries, key)
+	}
+}
+
+func (rt *retryTracker) removeCancelFunc(key string) {
+	rt.mu.Lock()
+	defer rt.mu.Unlock()
+	delete(rt.retries, key)
+}
+
+func generateMessageID(messageValue interface{}) string {
+	return fmt.Sprintf("%v", messageValue)
+}
+
+
+
+func createTimeoutContext(retryKey string, onTimeout func()) (context.Context, context.CancelFunc) {
+	ctx, cancel := context.WithTimeout(context.Background(), RPC_TIMEOUT)
+	tracker.storeCancelFunc(retryKey, cancel)
+	
+	go handleTimeout(ctx, retryKey, onTimeout)
+	
+	return ctx, cancel
+}
+
+func handleTimeout(ctx context.Context, retryKey string, onTimeout func()) {
+	<-ctx.Done()
+	if ctx.Err() == context.DeadlineExceeded {
+		tracker.removeCancelFunc(retryKey)
+		onTimeout()
+	}
+}
+
+func createSuccessCallback(retryKey string, cancel context.CancelFunc) func(maelstrom.Message) error {
+	return func(msg maelstrom.Message) error {
+		tracker.cancelAndRemove(retryKey)
+		cancel()
+		return nil
+	}
+}
+
+func handleRPCError(retryKey string, cancel context.CancelFunc, onError func()) {
+	tracker.removeCancelFunc(retryKey)
+	cancel()
+	onError()
+}
+
+func executeRPC(n *maelstrom.Node, targetNode string, messageValue interface{}, retryKey string, cancel context.CancelFunc, onError func()) {
+	err := n.RPC(targetNode, map[string]any{
+		"type":    "broadcast",
+		"message": messageValue,
+	}, createSuccessCallback(retryKey, cancel))
+	
+	if err != nil {
+		handleRPCError(retryKey, cancel, onError)
+	}
+}
+
+func sendWithRetry(n *maelstrom.Node, targetNode string, messageValue interface{}, messageID string, attemptsLeft int) {
+	if attemptsLeft <= 0 {
+		return
+	}
+	
+	retryKey := fmt.Sprintf("%s:%s", targetNode, messageID)
+	
+	_, cancel := createTimeoutContext(retryKey, func() {
+		sendWithRetry(n, targetNode, messageValue, messageID, attemptsLeft-1)
+	})
+	
+	executeRPC(n, targetNode, messageValue, retryKey, cancel, func() {
+		sendWithRetry(n, targetNode, messageValue, messageID, attemptsLeft-1)
+	})
+}
+
 func sendGossipToNodes(n *maelstrom.Node, targetNodes []string, messageValue interface{}) {
+	messageID := generateMessageID(messageValue)
+	
 	for _, node := range targetNodes {
-		go func(targetNode string) {
-			n.RPC(targetNode, map[string]any{
-				"type":    "broadcast",
-				"message": messageValue,
-			}, func(msg maelstrom.Message) error {
-				return nil
-			})
-		}(node)
+		go sendWithRetry(n, node, messageValue, messageID, MAX_RETRIES)
 	}
 }
 
