@@ -129,6 +129,41 @@ func BroadcastHandler(n *maelstrom.Node) func(maelstrom.Message) error {
 
 
 
+## Challenge #3c: Fault-Tolerant Broadcast
+
+[Challenge #3c](https://fly.io/dist-sys/3c/) adds fault tolerance to the multi-node broadcast system, ensuring message propagation continues even when nodes fail or network partitions occur.
+
+### My Solution: Retry and Timeout Mechanisms
+
+Built upon the topology-aware gossip protocol from 3b by adding comprehensive fault tolerance through retry mechanisms and timeout handling:
+
+```go
+const (
+    RPC_TIMEOUT = 5 * time.Second
+    MAX_RETRIES = 10
+)
+
+func sendWithRetry(n *maelstrom.Node, targetNode string, messageValue interface{}, messageID string, attemptsLeft int) {
+    if attemptsLeft <= 0 {
+        return
+    }
+    
+    retryKey := fmt.Sprintf("%s:%s", targetNode, messageID)
+    
+    _, cancel := createTimeoutContext(retryKey, func() {
+        sendWithRetry(n, targetNode, messageValue, messageID, attemptsLeft-1)
+    })
+    
+    executeRPC(n, targetNode, messageValue, retryKey, cancel, func() {
+        sendWithRetry(n, targetNode, messageValue, messageID, attemptsLeft-1)
+    })
+}
+
+type retryTracker struct {
+    mu      sync.Mutex
+    retries map[string]context.CancelFunc
+}
+```
 ## Running the Tests
 
 ```bash
@@ -146,4 +181,7 @@ go build -o gossip-gloomers
 
 # Run Challenge #3b tests
 ./maelstrom test -w broadcast --bin ./gossip-gloomers --node-count 5 --time-limit 20 --rate 10
+
+# Run Challenge #3c tests
+./maelstrom test -w broadcast --bin ./gossip-gloomers --node-count 5 --time-limit 20 --rate 10 --nemesis partition
 ```
